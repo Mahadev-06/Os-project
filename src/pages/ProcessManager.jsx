@@ -2,7 +2,23 @@ import React, { useState } from "react";
 import ProcessForm from "../components/ProcessForm";
 import ProcessTable from "../components/ProcessTable";
 import ProcessModal from "../components/ProcessModal";
-import { RefreshCw, Trash2, AlertTriangle, Cpu, Terminal, Search, Zap, Check } from "lucide-react";
+import {
+  RefreshCw,
+  Trash2,
+  AlertTriangle,
+  Cpu,
+  Terminal,
+  Search,
+  Zap,
+  Check,
+  Filter,
+  Globe,
+  Music,
+  MessageSquare,
+  FileText,
+  Monitor,
+  Server,
+} from "lucide-react";
 
 export default function ProcessManager({
   processes,
@@ -17,6 +33,7 @@ export default function ProcessManager({
   onNavigate,
 }) {
   const [activeTab, setActiveTab] = useState("simulated"); // "simulated" | "live"
+  const [liveFilter, setLiveFilter] = useState("user_apps"); // "user_apps" | "all"
   const [editingProcess, setEditingProcess] = useState(null);
   const [showConfirmReset, setShowConfirmReset] = useState(false);
   const [showConfirmClear, setShowConfirmClear] = useState(false);
@@ -25,11 +42,26 @@ export default function ProcessManager({
 
   const existingPids = processes.map((p) => p.id);
 
-  // Filter live processes by search
-  const filteredLiveProcesses = liveProcesses.filter((p) =>
-    (p.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-    String(p.realPid || "").includes(searchQuery)
-  );
+  const userAppsCount = liveProcesses.filter(
+    (p) => p.isUserApp || p.category === "Browser Tab" || p.category === "User Application"
+  ).length;
+
+  // Filter live processes by search and category
+  const filteredLiveProcesses = liveProcesses.filter((p) => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      (p.name || "").toLowerCase().includes(q) ||
+      (p.rawName || "").toLowerCase().includes(q) ||
+      (p.windowTitle || "").toLowerCase().includes(q) ||
+      (p.detail || "").toLowerCase().includes(q) ||
+      String(p.realPid || "").includes(q);
+
+    if (!matchesSearch) return false;
+    if (liveFilter === "user_apps") {
+      return p.isUserApp || p.category === "Browser Tab" || p.category === "User Application";
+    }
+    return true;
+  });
 
   const handleImportSingle = (lp) => {
     const newProc = {
@@ -219,22 +251,54 @@ export default function ProcessManager({
         <div className="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-bold text-slate-800">Live Windows Process Explorer</h3>
-              <p className="text-xs text-slate-500">
-                Real applications running on your machine with genuine memory and thread priority
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-800">Live Windows Process Explorer</h3>
+                <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                  Live
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Real applications, open tabs, and background services with genuine memory and OS thread priority
               </p>
             </div>
 
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-              <input
-                type="text"
-                placeholder="Search processes..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded font-mono outline-none focus:border-blue-500"
-              />
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Category Filter Toggle */}
+              <div className="flex items-center bg-white p-0.5 rounded border border-slate-200 text-xs font-medium shadow-2xs">
+                <button
+                  onClick={() => setLiveFilter("user_apps")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-colors ${
+                    liveFilter === "user_apps"
+                      ? "bg-blue-600 text-white font-bold shadow-2xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                  }`}
+                >
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>Open User Apps Only ({userAppsCount})</span>
+                </button>
+                <button
+                  onClick={() => setLiveFilter("all")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-colors ${
+                    liveFilter === "all"
+                      ? "bg-blue-600 text-white font-bold shadow-2xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                  }`}
+                >
+                  <span>All Tasks ({liveProcesses.length})</span>
+                </button>
+              </div>
+
+              {/* Search Input */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search processes..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded font-mono outline-none focus:border-blue-500 shadow-2xs"
+                />
+              </div>
             </div>
           </div>
 
@@ -243,7 +307,8 @@ export default function ProcessManager({
               <thead>
                 <tr className="bg-slate-50/70 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wider">
                   <th className="py-2.5 px-4 font-mono">PID</th>
-                  <th className="py-2.5 px-4">Process Name</th>
+                  <th className="py-2.5 px-4">Application / Process</th>
+                  <th className="py-2.5 px-4">Category</th>
                   <th className="py-2.5 px-4 text-center font-mono">RAM (MB)</th>
                   <th className="py-2.5 px-4 text-center font-mono">CPU (Sec)</th>
                   <th className="py-2.5 px-4 text-center font-mono">Base Priority</th>
@@ -253,34 +318,93 @@ export default function ProcessManager({
               <tbody className="divide-y divide-slate-100 font-mono text-xs">
                 {filteredLiveProcesses.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-xs text-slate-400">
-                      No matching live Windows tasks found.
+                    <td colSpan={7} className="py-8 text-center text-xs text-slate-400 font-sans">
+                      No matching live Windows tasks found for this filter.
                     </td>
                   </tr>
                 ) : (
-                  filteredLiveProcesses.map((lp) => (
-                    <tr key={lp.id} className="hover:bg-slate-50/60">
-                      <td className="py-2.5 px-4 font-bold text-slate-900">{lp.realPid || lp.id}</td>
-                      <td className="py-2.5 px-4 font-sans font-medium text-slate-800">{lp.name}</td>
-                      <td className="py-2.5 px-4 text-center text-slate-700">{lp.memoryMb} MB</td>
-                      <td className="py-2.5 px-4 text-center text-slate-600">{lp.cpuSeconds}s</td>
-                      <td className="py-2.5 px-4 text-center">
-                        <span className={`px-2 py-0.5 rounded text-[11px] font-sans ${
-                          lp.priority === 1 ? "bg-blue-50 text-blue-700 font-bold border border-blue-200" : "bg-slate-100 text-slate-600"
-                        }`}>
-                          {lp.rawPriority || 8} ({lp.priority === 1 ? "High" : lp.priority === 3 ? "Idle" : "Normal"})
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-4 text-right">
-                        <button
-                          onClick={() => handleImportSingle(lp)}
-                          className="px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors"
-                        >
-                          + Add to Scheduler
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  filteredLiveProcesses.map((lp) => {
+                    const isTab = lp.category === "Browser Tab" || lp.name?.includes("YouTube Music") || lp.name?.includes("LeetCode") || lp.name?.includes("VTOP");
+                    const isPowerPoint = lp.rawName?.toLowerCase().includes("powerpnt") || lp.name?.includes("PowerPoint");
+                    const isWhatsApp = lp.rawName?.toLowerCase().includes("whatsapp") || lp.name?.includes("WhatsApp");
+                    const isMusic = lp.name?.toLowerCase().includes("music") || lp.name?.toLowerCase().includes("youtube");
+
+                    return (
+                      <tr key={lp.id} className="hover:bg-slate-50/60">
+                        <td className="py-2.5 px-4 font-bold text-slate-900">{lp.realPid || lp.id}</td>
+                        <td className="py-2.5 px-4 font-sans">
+                          <div className="flex items-center gap-2">
+                            {isMusic ? (
+                              <span className="p-1.5 rounded bg-rose-50 text-rose-600 border border-rose-200 shrink-0">
+                                <Music className="w-3.5 h-3.5" />
+                              </span>
+                            ) : isPowerPoint ? (
+                              <span className="p-1.5 rounded bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                                <FileText className="w-3.5 h-3.5" />
+                              </span>
+                            ) : isWhatsApp ? (
+                              <span className="p-1.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                <MessageSquare className="w-3.5 h-3.5" />
+                              </span>
+                            ) : isTab ? (
+                              <span className="p-1.5 rounded bg-purple-50 text-purple-700 border border-purple-200 shrink-0">
+                                <Globe className="w-3.5 h-3.5" />
+                              </span>
+                            ) : lp.isUserApp ? (
+                              <span className="p-1.5 rounded bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                                <Monitor className="w-3.5 h-3.5" />
+                              </span>
+                            ) : (
+                              <span className="p-1.5 rounded bg-slate-100 text-slate-500 border border-slate-200 shrink-0">
+                                <Server className="w-3.5 h-3.5" />
+                              </span>
+                            )}
+                            <div className="min-w-0">
+                              <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                                <span className="truncate">{lp.name}</span>
+                                {lp.rawName && lp.rawName !== lp.name && (
+                                  <span className="text-[10px] text-slate-400 font-mono shrink-0">({lp.rawName})</span>
+                                )}
+                              </div>
+                              {(lp.windowTitle || lp.detail) && (
+                                <p className="text-[11px] text-slate-500 font-sans truncate max-w-sm sm:max-w-md">
+                                  {lp.windowTitle || lp.detail}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4 font-sans">
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-medium border ${
+                            isTab
+                              ? "bg-purple-50 text-purple-700 border-purple-200"
+                              : lp.isUserApp
+                              ? "bg-blue-50 text-blue-700 border-blue-200 font-semibold"
+                              : "bg-slate-50 text-slate-600 border-slate-200"
+                          }`}>
+                            {lp.category || (lp.isUserApp ? "User App" : "System")}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 text-center text-slate-700">{lp.memoryMb} MB</td>
+                        <td className="py-2.5 px-4 text-center text-slate-600">{lp.cpuSeconds}s</td>
+                        <td className="py-2.5 px-4 text-center">
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-sans ${
+                            lp.priority === 1 ? "bg-blue-50 text-blue-700 font-bold border border-blue-200" : "bg-slate-100 text-slate-600"
+                          }`}>
+                            Base {lp.rawPriority || 8} ({lp.priority === 1 ? "High" : lp.priority === 3 ? "Idle" : "Normal"})
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 text-right">
+                          <button
+                            onClick={() => handleImportSingle(lp)}
+                            className="px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors shadow-2xs font-sans"
+                          >
+                            + Add to Scheduler
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

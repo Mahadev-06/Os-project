@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Layers,
   Clock,
@@ -12,6 +12,12 @@ import {
   HardDrive,
   Server,
   Zap,
+  Filter,
+  Music,
+  Globe,
+  FileText,
+  MessageSquare,
+  Monitor,
 } from "lucide-react";
 import StatCard from "../components/StatCard";
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
@@ -27,6 +33,15 @@ export default function Dashboard({
   onNavigate,
   onImportLiveProcesses,
 }) {
+  const [procFilter, setProcFilter] = useState("user_apps"); // "user_apps" | "all"
+
+  const userApps = useMemo(() => {
+    return liveProcesses.filter(
+      (p) => p.isUserApp || p.category === "Browser Tab" || p.category === "User Application"
+    );
+  }, [liveProcesses]);
+
+  const displayedProcesses = procFilter === "user_apps" ? userApps : liveProcesses;
   // Aggregate process state counts for simulation mode
   const stateCounts = useMemo(() => {
     const counts = { NEW: 0, READY: 0, RUNNING: 0, WAITING: 0, TERMINATED: 0 };
@@ -240,33 +255,66 @@ export default function Dashboard({
           <div className="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
             <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-800">Real Windows Tasks Running On This PC</h3>
-                <p className="text-xs text-slate-500">
-                  Actual OS process identifiers, memory consumption, and priority classes
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-slate-800">Real Windows Tasks Running On This PC</h3>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                    Live
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Actual OS process identifiers, memory consumption, open applications & browser tabs
                 </p>
               </div>
 
-              <button
-                onClick={() => {
-                  if (onImportLiveProcesses) {
-                    onImportLiveProcesses(liveProcesses.slice(0, 4));
-                    onNavigate("scheduler");
-                  }
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded transition-colors shadow-2xs"
-                title="Send real computer processes directly into the CPU Scheduler"
-              >
-                <Zap className="w-3.5 h-3.5" />
-                <span>Schedule Top Tasks in CPU Lab</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Filter toggle */}
+                <div className="flex items-center bg-white p-0.5 rounded border border-slate-200 text-xs font-medium shadow-2xs">
+                  <button
+                    onClick={() => setProcFilter("user_apps")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-colors ${
+                      procFilter === "user_apps"
+                        ? "bg-blue-600 text-white font-bold shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Filter className="w-3.5 h-3.5" />
+                    <span>Open User Apps Only ({userApps.length})</span>
+                  </button>
+                  <button
+                    onClick={() => setProcFilter("all")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-colors ${
+                      procFilter === "all"
+                        ? "bg-blue-600 text-white font-bold shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span>All Processes ({liveProcesses.length})</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (onImportLiveProcesses) {
+                      onImportLiveProcesses(displayedProcesses.slice(0, 4));
+                      onNavigate("scheduler");
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded transition-colors shadow-2xs"
+                  title="Send these processes directly into the CPU Scheduler"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Schedule in CPU Lab</span>
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm border-collapse">
                 <thead>
                   <tr className="bg-slate-50/70 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                    <th className="py-2.5 px-4">PID</th>
-                    <th className="py-2.5 px-4">Process Name</th>
+                    <th className="py-2.5 px-4 font-mono">PID</th>
+                    <th className="py-2.5 px-4">Application / Process</th>
+                    <th className="py-2.5 px-4">Category</th>
                     <th className="py-2.5 px-4 text-center font-mono">RAM (Working Set)</th>
                     <th className="py-2.5 px-4 text-center font-mono">CPU Time</th>
                     <th className="py-2.5 px-4 text-center">Windows Priority</th>
@@ -274,26 +322,93 @@ export default function Dashboard({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-mono text-xs">
-                  {liveProcesses.slice(0, 8).map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50/60">
-                      <td className="py-2.5 px-4 font-bold text-slate-900">{p.realPid || p.id}</td>
-                      <td className="py-2.5 px-4 font-sans font-medium text-slate-800">{p.name}</td>
-                      <td className="py-2.5 px-4 text-center text-slate-700">{p.memoryMb} MB</td>
-                      <td className="py-2.5 px-4 text-center text-slate-600">{p.cpuSeconds}s</td>
-                      <td className="py-2.5 px-4 text-center">
-                        <span className={`px-2 py-0.5 rounded text-[11px] font-sans ${
-                          p.priority === 1 ? "bg-blue-50 text-blue-700 font-bold border border-blue-200" : "bg-slate-100 text-slate-600"
-                        }`}>
-                          Base {p.rawPriority || 8} ({p.priority === 1 ? "High" : p.priority === 3 ? "Idle" : "Normal"})
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-4 text-center">
-                        <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-sans font-medium">
-                          {p.state}
-                        </span>
+                  {displayedProcesses.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-xs text-slate-400 font-sans">
+                        No processes match the selected filter.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    displayedProcesses.slice(0, 14).map((p) => {
+                      const isTab = p.category === "Browser Tab" || p.name?.includes("YouTube Music") || p.name?.includes("LeetCode") || p.name?.includes("VTOP");
+                      const isPowerPoint = p.rawName?.toLowerCase().includes("powerpnt") || p.name?.includes("PowerPoint");
+                      const isWhatsApp = p.rawName?.toLowerCase().includes("whatsapp") || p.name?.includes("WhatsApp");
+                      const isMusic = p.name?.toLowerCase().includes("music") || p.name?.toLowerCase().includes("youtube");
+
+                      return (
+                        <tr key={p.id} className="hover:bg-slate-50/60">
+                          <td className="py-2.5 px-4 font-bold text-slate-900">{p.realPid || p.id}</td>
+                          <td className="py-2.5 px-4 font-sans">
+                            <div className="flex items-center gap-2">
+                              {isMusic ? (
+                                <span className="p-1.5 rounded bg-rose-50 text-rose-600 border border-rose-200 shrink-0">
+                                  <Music className="w-3.5 h-3.5" />
+                                </span>
+                              ) : isPowerPoint ? (
+                                <span className="p-1.5 rounded bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                                  <FileText className="w-3.5 h-3.5" />
+                                </span>
+                              ) : isWhatsApp ? (
+                                <span className="p-1.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                  <MessageSquare className="w-3.5 h-3.5" />
+                                </span>
+                              ) : isTab ? (
+                                <span className="p-1.5 rounded bg-purple-50 text-purple-700 border border-purple-200 shrink-0">
+                                  <Globe className="w-3.5 h-3.5" />
+                                </span>
+                              ) : p.isUserApp ? (
+                                <span className="p-1.5 rounded bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                                  <Monitor className="w-3.5 h-3.5" />
+                                </span>
+                              ) : (
+                                <span className="p-1.5 rounded bg-slate-100 text-slate-500 border border-slate-200 shrink-0">
+                                  <Server className="w-3.5 h-3.5" />
+                                </span>
+                              )}
+                              <div className="min-w-0">
+                                <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                                  <span className="truncate">{p.name}</span>
+                                  {p.rawName && p.rawName !== p.name && (
+                                    <span className="text-[10px] text-slate-400 font-mono shrink-0">({p.rawName})</span>
+                                  )}
+                                </div>
+                                {(p.windowTitle || p.detail) && (
+                                  <p className="text-[11px] text-slate-500 font-sans truncate max-w-sm sm:max-w-md">
+                                    {p.windowTitle || p.detail}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-4 font-sans">
+                            <span className={`px-2 py-0.5 rounded text-[11px] font-medium border ${
+                              isTab
+                                ? "bg-purple-50 text-purple-700 border-purple-200"
+                                : p.isUserApp
+                                ? "bg-blue-50 text-blue-700 border-blue-200 font-semibold"
+                                : "bg-slate-50 text-slate-600 border-slate-200"
+                            }`}>
+                              {p.category || (p.isUserApp ? "User App" : "System")}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-4 text-center text-slate-700">{p.memoryMb} MB</td>
+                          <td className="py-2.5 px-4 text-center text-slate-600">{p.cpuSeconds}s</td>
+                          <td className="py-2.5 px-4 text-center">
+                            <span className={`px-2 py-0.5 rounded text-[11px] font-sans ${
+                              p.priority === 1 ? "bg-blue-50 text-blue-700 font-bold border border-blue-200" : "bg-slate-100 text-slate-600"
+                            }`}>
+                              Base {p.rawPriority || 8} ({p.priority === 1 ? "High" : p.priority === 3 ? "Idle" : "Normal"})
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-4 text-center">
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-sans font-medium">
+                              {p.state}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
