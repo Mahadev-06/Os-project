@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Play, AlertCircle, Info } from "lucide-react";
+import { Play, AlertCircle, Info, Zap, RefreshCw } from "lucide-react";
 import GanttChart from "../components/GanttChart";
 import MetricCard from "../components/MetricCard";
 import { runFCFS } from "../algorithms/fcfs";
@@ -37,12 +37,15 @@ const ALGORITHM_EXPLANATIONS = {
 
 export default function CpuScheduler({
   processes,
+  liveProcesses = [],
   quantum,
   setQuantum,
   selectedAlgorithm,
   setSelectedAlgorithm,
   onRecordMetrics,
   onNavigate,
+  onImportLiveProcesses,
+  onRestoreDefaults,
 }) {
   const [simulationResult, setSimulationResult] = useState(null);
   const [error, setError] = useState(null);
@@ -152,14 +155,39 @@ export default function CpuScheduler({
             )}
           </div>
 
-          {/* Run Button */}
-          <button
-            onClick={handleRunScheduler}
-            className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-bold shadow-sm transition-colors"
-          >
-            <Play className="w-4 h-4" />
-            <span>Run Scheduler</span>
-          </button>
+          {/* Quick Workload Action Buttons */}
+          <div className="flex items-center gap-2">
+            {liveProcesses.length > 0 && onImportLiveProcesses && (
+              <button
+                onClick={() => onImportLiveProcesses(liveProcesses.slice(0, 4))}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors"
+                title="Schedule real Windows applications currently active on PC"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Load Live PC Tasks</span>
+              </button>
+            )}
+
+            {onRestoreDefaults && (
+              <button
+                onClick={onRestoreDefaults}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded transition-colors"
+                title="Restore P1-P4 textbook sample data"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Sample P1–P4</span>
+              </button>
+            )}
+
+            {/* Run Button */}
+            <button
+              onClick={handleRunScheduler}
+              className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-bold shadow-sm transition-colors"
+            >
+              <Play className="w-4 h-4" />
+              <span>Run Scheduler</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -190,14 +218,14 @@ export default function CpuScheduler({
 
         {processes.length === 0 ? (
           <div className="p-6 bg-slate-50 border border-dashed border-slate-200 rounded text-center text-xs text-slate-500">
-            No processes available. Add a process from Process Manager.
+            No processes available. Add a process or click "Load Live PC Tasks".
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse font-mono">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-sans font-semibold">
-                  <th className="py-2 px-3">PID</th>
+                  <th className="py-2 px-3">PID / Task</th>
                   <th className="py-2 px-3">Arrival Time</th>
                   <th className="py-2 px-3">Burst Time</th>
                   <th className="py-2 px-3">Priority (Lower=High)</th>

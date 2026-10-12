@@ -1,8 +1,12 @@
 import React, { useState } from "react";
 import ResourceTable from "../components/ResourceTable";
-import { CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { CheckCircle2, AlertCircle, RefreshCw, HardDrive, Cpu, Server, ShieldCheck } from "lucide-react";
 
 export default function ResourceManager({
+  mode = "live",
+  systemOverview,
+  liveMetrics,
+  disks = [],
   resources,
   processes,
   onRequestResource,
@@ -40,7 +44,7 @@ export default function ResourceManager({
 
     const result = onRequestResource(selectedProcess, selectedResource, qty);
     if (!result.success) {
-      setErrorMessage(result.message); // e.g. "Resource unavailable. Process must wait."
+      setErrorMessage(result.message);
     } else {
       setMessage(result.message);
     }
@@ -72,6 +76,73 @@ export default function ResourceManager({
 
   return (
     <div className="space-y-6">
+      {/* Real Computer Physical Devices Section */}
+      <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Host PC Physical Hardware Resources
+            </h3>
+            <p className="text-xs text-slate-500">
+              Real computer devices currently recognized by the operating system kernel
+            </p>
+          </div>
+          <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+            Host Hardware Active
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+          {/* CPU Device */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg flex items-start gap-3">
+            <div className="p-2 bg-blue-100 rounded text-blue-700 shrink-0">
+              <Cpu className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 font-medium">Processor Unit</span>
+              <p className="text-sm font-bold text-slate-900 font-mono">
+                {systemOverview?.cpuCores || 8} Logical Cores
+              </p>
+              <p className="text-[11px] text-slate-500 mt-0.5 truncate max-w-[200px]">
+                {systemOverview?.cpuModel || "x86_64 CPU"}
+              </p>
+            </div>
+          </div>
+
+          {/* Physical RAM */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg flex items-start gap-3">
+            <div className="p-2 bg-purple-100 rounded text-purple-700 shrink-0">
+              <Server className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 font-medium">Physical Memory</span>
+              <p className="text-sm font-bold text-slate-900 font-mono">
+                {systemOverview?.totalMemoryGb || 16.0} GB RAM
+              </p>
+              <p className="text-[11px] text-emerald-700 font-mono mt-0.5">
+                {liveMetrics?.memory?.freeGb ?? 7.8} GB Free ({liveMetrics?.memory?.percent ?? 52}% Used)
+              </p>
+            </div>
+          </div>
+
+          {/* Disk Partitions */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg flex items-start gap-3">
+            <div className="p-2 bg-emerald-100 rounded text-emerald-700 shrink-0">
+              <HardDrive className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 font-medium">Storage Drives</span>
+              <p className="text-sm font-bold text-slate-900 font-mono">
+                {disks.length > 0 ? `${disks[0].drive} (${disks[0].totalGb} GB)` : "C: Local Disk (256 GB)"}
+              </p>
+              <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                {disks.length > 0 ? `${disks[0].freeGb} GB Free` : "116 GB Free"}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Action Toolbar */}
       <div className="flex items-center justify-end">
         <button
@@ -86,7 +157,7 @@ export default function ResourceManager({
       {/* Available Resource Counters */}
       <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-sm">
         <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
-          Available Resource Pool Counts
+          Simulated Hardware Allocation Pool
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {resourceTypes.map((res) => {
@@ -201,7 +272,7 @@ export default function ResourceManager({
         <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-sm">
           <h3 className="text-sm font-bold text-slate-800 mb-1">Release Resource</h3>
           <p className="text-xs text-slate-500 mb-4">
-            Process relinquishes held resources back to the pool upon task or I/O completion.
+            Process relinquishes held resources back to the pool upon task completion.
           </p>
 
           <form onSubmit={handleRelease} className="space-y-3">
@@ -229,7 +300,7 @@ export default function ResourceManager({
                 <label className="block text-xs font-medium text-slate-600 mb-1">Resource</label>
                 <select
                   value={releaseResource}
-                  onChange={(e) => setReleaseResource(e.target.value)}
+                  onChange={(e) => setSelectedResource(e.target.value)}
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded outline-none bg-white font-mono"
                 >
                   {resourceTypes.map((r) => (

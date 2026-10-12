@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import Dashboard from "./pages/Dashboard";
@@ -26,8 +26,16 @@ import {
   DEFAULT_RESOURCES,
 } from "./utils/storage";
 
+import {
+  fetchSystemOverview,
+  fetchLiveMetrics,
+  fetchLiveProcesses,
+  fetchDisks,
+} from "./utils/systemApi";
+
 export default function App() {
   const [activePage, setActivePage] = useState("dashboard");
+  const [mode, setMode] = useState("live"); // "live" (Real PC) | "simulation" (Sample P1-P4)
   const [processes, setProcesses] = useState(getStoredProcesses);
   const [quantum, setQuantum] = useState(getStoredQuantum);
   const [selectedAlgorithm, setSelectedAlgorithm] = useState(getStoredAlgorithm);
@@ -35,6 +43,13 @@ export default function App() {
   const [bankerData, setBankerData] = useState(getStoredBankerData);
   const [events, setEvents] = useState(getStoredEvents);
   const [latestMetrics, setLatestMetrics] = useState(null);
+
+  // Real PC Hardware State
+  const [systemOverview, setSystemOverview] = useState(null);
+  const [liveMetrics, setLiveMetrics] = useState(null);
+  const [liveProcesses, setLiveProcesses] = useState([]);
+  const [disks, setDisks] = useState([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Sync state to localStorage whenever processes change
   useEffect(() => {
@@ -57,9 +72,72 @@ export default function App() {
     setStoredBankerData(bankerData);
   }, [bankerData]);
 
-  const logEvent = (message) => {
+  const logEvent = useCallback((message) => {
     const updated = addStoredEvent(message);
     setEvents(updated);
+  }, []);
+
+  // Fetch initial host hardware specs
+  const refreshSystemData = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const [ov, lm, lp, dk] = await Promise.all([
+        fetchSystemOverview(),
+        fetchLiveMetrics(),
+        fetchLiveProcesses(),
+        fetchDisks(),
+      ]);
+      setSystemOverview(ov.data);
+      setLiveMetrics(lm.data);
+      setLiveProcesses(lp.data);
+      setDisks(dk.data);
+    } catch (err) {
+      console.warn("Failed fetching live system metrics:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  // Initial load and polling
+  useEffect(() => {
+    refreshSystemData();
+
+    // High frequency metrics poll (every 2.5s)
+    const metricsTimer = setInterval(async () => {
+      const lm = await fetchLiveMetrics();
+      setLiveMetrics(lm.data);
+    }, 2500);
+
+    // Process list poll (every 5s)
+    const procTimer = setInterval(async () => {
+      const lp = await fetchLiveProcesses();
+      setLiveProcesses(lp.data);
+    }, 5000);
+
+    return () => {
+      clearInterval(metricsTimer);
+      clearInterval(procTimer);
+    };
+  }, [refreshSystemData]);
+
+  // Import Live Windows Tasks into Scheduler Workload
+  const handleImportLiveProcesses = (selectedList) => {
+    const tasks = selectedList && selectedList.length > 0 ? selectedList : liveProcesses.slice(0, 4);
+    if (!tasks || tasks.length === 0) return;
+
+    const imported = tasks.map((lp, idx) => ({
+      id: `P-${lp.name.replace(".exe", "").substring(0, 8)}`,
+      realPid: lp.realPid,
+      name: lp.name,
+      arrivalTime: idx % 3,
+      burstTime: lp.burstTime || 4,
+      priority: lp.priority || 2,
+      memory: lp.memoryMb || 128,
+      state: "READY",
+    }));
+
+    setProcesses(imported);
+    logEvent(`Imported ${imported.length} active Windows tasks into scheduler`);
   };
 
   // Add Process
@@ -81,10 +159,8 @@ export default function App() {
     const updated = processes.filter((p) => p.id !== pid);
     setProcesses(updated);
 
-    // Also remove process from resource allocations if any
     const updatedAllocations = { ...resources.allocations };
     if (updatedAllocations[pid]) {
-      // Return held resources to available pool
       const held = updatedAllocations[pid];
       const updatedAvailable = { ...resources.available };
       Object.keys(held).forEach((res) => {
@@ -97,27 +173,23 @@ export default function App() {
     logEvent(`Process ${pid} deleted from system`);
   };
 
-  // State Transitions (NEW -> READY -> RUNNING -> WAITING -> READY -> TERMINATED)
+  // State Transitions
   const handleStateChange = (pid, targetState) => {
     const p = processes.find((item) => item.id === pid);
     if (!p) return;
 
     const currentState = p.state || "NEW";
-
-    // Validate transition
     const allowed = ALLOWED_STATE_TRANSITIONS[currentState] || [];
     if (!allowed.includes(targetState)) {
       alert(`Invalid transition from ${currentState} to ${targetState} according to OS process lifecycle rules.`);
       return;
     }
 
-    // If moving to RUNNING, ensure no two processes are marked RUNNING at once in a single CPU model
     let updated = processes.map((item) => {
       if (item.id === pid) {
         return { ...item, state: targetState };
       }
       if (targetState === "RUNNING" && item.state === "RUNNING") {
-        // Preempt previous running process back to READY
         return { ...item, state: "READY" };
       }
       return item;
@@ -235,16 +307,18 @@ export default function App() {
   // Page title mapping
   const pageTitles = {
     dashboard: {
-      title: "OS-TaskFlow Dashboard",
-      subtitle: "Process Scheduling and Resource Management Overview",
+      title: mode === "live" ? "Live PC Hardware & Process Monitor" : "OS-TaskFlow Dashboard",
+      subtitle: mode === "live"
+        ? `Real-time host inspection: ${systemOverview?.cpuModel || "CPU"} • ${systemOverview?.hostname || "Localhost"}`
+        : "Process Scheduling and Resource Management Overview",
     },
     processes: {
       title: "Process Manager",
-      subtitle: "Create and manage simulated operating system processes",
+      subtitle: "Inspect real Windows tasks or manage simulated processes and lifecycle states",
     },
     scheduler: {
       title: "CPU Scheduling Laboratory",
-      subtitle: "Simulate and analyze CPU scheduling algorithms",
+      subtitle: "Simulate and analyze CPU scheduling algorithms on live or synthetic workloads",
     },
     comparison: {
       title: "CPU Scheduling Comparison",
@@ -252,7 +326,7 @@ export default function App() {
     },
     resources: {
       title: "Resource Manager",
-      subtitle: "Simulate allocation and release of limited system resources",
+      subtitle: "Physical computer hardware devices and simulated device allocation",
     },
     deadlock: {
       title: "Deadlock & Safety Analyzer",
@@ -276,40 +350,55 @@ export default function App() {
         <Header
           title={currentHeaderInfo.title}
           subtitle={currentHeaderInfo.subtitle}
+          mode={mode}
+          setMode={setMode}
           onRestoreDefaults={handleRestoreDefaults}
+          onRefreshLive={refreshSystemData}
+          isRefreshing={isRefreshing}
         />
 
-        <main className="flex-1 p-8 overflow-y-auto">
+        <main className="flex-1 p-6 md:p-8 overflow-y-auto">
           {activePage === "dashboard" && (
             <Dashboard
+              mode={mode}
+              systemOverview={systemOverview}
+              liveMetrics={liveMetrics}
+              liveProcesses={liveProcesses}
               processes={processes}
               events={events}
               schedulerMetrics={latestMetrics}
               onNavigate={(page) => setActivePage(page)}
+              onImportLiveProcesses={handleImportLiveProcesses}
             />
           )}
 
           {activePage === "processes" && (
             <ProcessManager
               processes={processes}
+              liveProcesses={liveProcesses}
               onAddProcess={handleAddProcess}
               onUpdateProcess={handleUpdateProcess}
               onDeleteProcess={handleDeleteProcess}
               onStateChange={handleStateChange}
               onResetAll={handleResetAll}
               onRestoreDefaults={handleRestoreDefaults}
+              onImportLiveProcesses={handleImportLiveProcesses}
+              onNavigate={(page) => setActivePage(page)}
             />
           )}
 
           {activePage === "scheduler" && (
             <CpuScheduler
               processes={processes}
+              liveProcesses={liveProcesses}
               quantum={quantum}
               setQuantum={setQuantum}
               selectedAlgorithm={selectedAlgorithm}
               setSelectedAlgorithm={setSelectedAlgorithm}
               onRecordMetrics={(m) => setLatestMetrics(m)}
               onNavigate={(page) => setActivePage(page)}
+              onImportLiveProcesses={handleImportLiveProcesses}
+              onRestoreDefaults={handleRestoreDefaults}
             />
           )}
 
@@ -323,6 +412,10 @@ export default function App() {
 
           {activePage === "resources" && (
             <ResourceManager
+              mode={mode}
+              systemOverview={systemOverview}
+              liveMetrics={liveMetrics}
+              disks={disks}
               resources={resources}
               processes={processes}
               onRequestResource={handleRequestResource}
