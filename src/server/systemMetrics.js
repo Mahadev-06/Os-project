@@ -3,8 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 
 const execAsync = promisify(exec);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const psScriptPath = path.join(__dirname, "getDesktopWindows.ps1");
 
 // Cache for CPU load calculation and processes
 let lastCpuMeasure = null;
@@ -94,292 +98,208 @@ export function getLiveMetrics() {
 }
 
 /**
- * Scans active browser session files for open tabs (like YouTube Music, VTOP, etc.).
- */
-function getActiveBrowserTabs() {
-  const localAppData = process.env.LOCALAPPDATA || "C:\\Users\\Lenovo\\AppData\\Local";
-  const sessionsDir = path.join(localAppData, "BraveSoftware", "Brave-Browser", "User Data", "Default", "Sessions");
-  const tempDir = os.tmpdir();
-  const tabs = [];
-
-  try {
-    if (!fs.existsSync(sessionsDir)) return tabs;
-    const files = fs.readdirSync(sessionsDir)
-      .filter(f => f.startsWith("Session_") || f.startsWith("Tabs_"))
-      .sort((a, b) => {
-        const sa = fs.statSync(path.join(sessionsDir, a));
-        const sb = fs.statSync(path.join(sessionsDir, b));
-        return sb.mtimeMs - sa.mtimeMs;
-      });
-
-    for (const f of files.slice(0, 3)) {
-      const src = path.join(sessionsDir, f);
-      const dst = path.join(tempDir, `scan_tab_${f}`);
-      try {
-        fs.copyFileSync(src, dst);
-        const buf = fs.readFileSync(dst);
-        try { fs.unlinkSync(dst); } catch {}
-        const text = buf.toString("utf8");
-
-        const urls = text.match(/https?:\/\/[^\x00-\x1F\x7F"<>\s\)]+/g) || [];
-        for (const u of urls) {
-          if (u.includes("google.com/search?") || u.includes("brave.com") || u.includes("googlevideo.com")) continue;
-
-          let title = "";
-          let app = "Browser Tab";
-          let category = "Browser Tab";
-
-          if (u.includes("music.youtube.com")) {
-            title = "YouTube Music";
-            app = "YouTube Music (Web Player)";
-          } else if (u.includes("youtube.com")) {
-            title = "YouTube Music";
-            app = "YouTube Music (Media Tab)";
-          } else if (u.includes("localhost:5173")) {
-            title = "OS-TaskFlow Simulator";
-            app = "Active Web App";
-          } else if (u.includes("leetcode.com")) {
-            title = "LeetCode Algorithms";
-            app = "Active Web Tab";
-          } else if (u.includes("vit.ac.in")) {
-            title = "VIT University Portal (VTOP)";
-            app = "Active Student Portal";
-          } else if (u.includes("onlinegdb.com")) {
-            title = "Online GDB C/C++ Compiler";
-            app = "Active Web Tab";
-          } else if (u.includes("whatsapp.com")) {
-            title = "WhatsApp Web";
-            app = "Messaging Web App";
-          }
-
-          if (title && !tabs.some(t => t.title === title)) {
-            tabs.push({ url: u, title, app, category });
-          }
-        }
-      } catch {
-        // file locked or inaccessible
-      }
-    }
-  } catch {}
-
-  return tabs;
-}
-
-/**
- * Runs a PowerShell script via UTF-16LE Base64 EncodedCommand
- * (completely bypasses cmd.exe quotation and argument parsing issues).
- */
-function runPowershellEncoded(scriptText, timeout = 4000) {
-  const buf = Buffer.from(scriptText, "utf16le");
-  const base64 = buf.toString("base64");
-  return execAsync(`powershell -NoProfile -NonInteractive -EncodedCommand ${base64}`, {
-    timeout,
-    maxBuffer: 25 * 1024 * 1024,
-  });
-}
-
-/**
- * Fetches real active Windows processes and identifies open user applications vs background services.
+ * Fetches real active Windows desktop windows and genuine host processes.
+ * Only processes with a real visible window on the user's desktop are classified as open user apps.
  */
 export async function getLiveProcesses() {
   const now = Date.now();
-  // Cache for 2.0s for smooth responsiveness
-  if (cachedProcesses && now - lastProcessFetchTime < 2000) {
+  // 1.0s cache: instantly reflects newly opened or closed applications
+  if (cachedProcesses && now - lastProcessFetchTime < 1000) {
     return cachedProcesses;
   }
 
   try {
-    const psScript = `
-      Get-CimInstance -ClassName Win32_Process -Property ProcessId, Name, CommandLine, WorkingSetSize, Priority | 
-      Select-Object ProcessId, Name, CommandLine, WorkingSetSize, Priority | 
-      ConvertTo-Json -Compress
-    `;
+    const psCmd = `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${psScriptPath}"`;
+    const { stdout } = await execAsync(psCmd, { timeout: 6000, maxBuffer: 15 * 1024 * 1024 });
 
-    const { stdout } = await runPowershellEncoded(psScript, 4500);
-
-    if (!stdout || stdout.trim() === "") {
+    // Strip out any CLI progress XML if present
+    const jsonStart = stdout.indexOf("{");
+    const jsonEnd = stdout.lastIndexOf("}");
+    if (jsonStart === -1 || jsonEnd === -1) {
       return getFallbackProcesses();
     }
 
-    const rawList = JSON.parse(stdout);
-    const list = Array.isArray(rawList) ? rawList : [rawList];
-
-    // Detect open browser tabs (YouTube Music, VTOP, etc.)
-    const browserTabs = getActiveBrowserTabs();
+    const payload = JSON.parse(stdout.slice(jsonStart, jsonEnd + 1));
+    const rawOpenApps = Array.isArray(payload.OpenApps) ? payload.OpenApps : (payload.OpenApps ? [payload.OpenApps] : []);
+    const rawBgProcs = Array.isArray(payload.Background) ? payload.Background : (payload.Background ? [payload.Background] : []);
 
     const userApps = [];
-    const backgroundProcesses = [];
-
-    // Track added PIDs to avoid duplicate root windows
     const seenPids = new Set();
+    const seenTitles = new Set();
 
-    for (const p of list) {
-      const pid = p.ProcessId;
-      const rawName = p.Name || "unknown.exe";
-      const cmd = (p.CommandLine || "").trim();
-      const lowerName = rawName.toLowerCase();
-      const memMb = Math.round((Number(p.WorkingSetSize) || 0) / (1024 * 1024));
-      const prio = p.Priority || 8;
+    for (const item of rawOpenApps) {
+      const pid = item.Pid;
+      const rawProc = (item.ProcessName || "").toLowerCase();
+      const title = (item.Title || "").trim();
 
-      // Translate Windows base priority to simulator priority scale (1=High, 2=Normal, 3=Lower)
-      let simPriority = 2;
-      if (prio >= 13) simPriority = 1;
-      else if (prio <= 6) simPriority = 3;
+      // Deduplicate helper sub-processes (e.g. msedgewebview2 inside WhatsApp)
+      if (rawProc === "msedgewebview2" && seenTitles.has("WhatsApp")) continue;
+      if (rawProc === "applicationframehost" && seenTitles.has("Settings")) continue;
+      if (seenPids.has(pid)) continue;
 
+      let displayName = item.ProcessName;
+      let category = "User Application";
+      let detail = title;
+
+      // 1. YouTube Music (Chrome PWA or browser window)
+      if (title.includes("YouTube Music") || rawProc.includes("music")) {
+        displayName = "YouTube Music";
+        category = "Media / Audio Player";
+        detail = title.replace(" - YouTube Music", "").replace("YouTube Music - ", "").trim();
+      }
+      // 2. Microsoft PowerPoint
+      else if (rawProc === "powerpnt" || title.includes("PowerPoint")) {
+        displayName = "Microsoft PowerPoint";
+        category = "Presentation / Office";
+        detail = title.replace(" - PowerPoint", "").replace(" - Protected View", "").trim();
+      }
+      // 3. WhatsApp Desktop
+      else if (rawProc.includes("whatsapp") || title === "WhatsApp") {
+        displayName = "WhatsApp Desktop";
+        category = "Messaging Client";
+        detail = "Active WhatsApp Window";
+      }
+      // 4. Brave Browser
+      else if (rawProc === "brave") {
+        displayName = "Brave Browser";
+        category = "Web Browser";
+        detail = title.replace(" - Brave", "").trim();
+      }
+      // 5. Google Chrome
+      else if (rawProc === "chrome") {
+        displayName = "Google Chrome";
+        category = "Web Browser";
+        detail = title.replace(" - Google Chrome", "").trim();
+      }
+      // 6. ChatGPT Desktop
+      else if (rawProc.includes("chatgpt") || title.includes("ChatGPT")) {
+        displayName = "ChatGPT Desktop";
+        category = "AI Assistant";
+        detail = "Active ChatGPT Window";
+      }
+      // 7. Code Editors / IDEs
+      else if (rawProc.includes("antigravity")) {
+        displayName = "Antigravity IDE";
+        category = "Code Editor";
+        detail = title;
+      } else if (rawProc === "code" || title.includes("Visual Studio Code")) {
+        displayName = "Visual Studio Code";
+        category = "Code Editor";
+        detail = title.replace(" - Visual Studio Code", "").trim();
+      }
+      // 8. Text Editors & Utilities
+      else if (rawProc === "notepad") {
+        displayName = "Notepad";
+        category = "Text Editor";
+        detail = title.replace(" - Notepad", "").trim();
+      } else if (rawProc.includes("calc") || title.includes("Calculator")) {
+        displayName = "Calculator";
+        category = "Utility App";
+        detail = "Windows Calculator";
+      } else if (rawProc.includes("spotify") || title.includes("Spotify")) {
+        displayName = "Spotify";
+        category = "Media / Audio Player";
+        detail = title.replace(" - Spotify", "").trim();
+      } else if (rawProc === "systemsettings") {
+        displayName = "Windows Settings";
+        category = "System Settings";
+        detail = "Settings & Configuration";
+      } else {
+        // Any newly opened user application on the desktop!
+        displayName = item.ProcessName.charAt(0).toUpperCase() + item.ProcessName.slice(1);
+        category = "User Application";
+        detail = title;
+      }
+
+      seenPids.add(pid);
+      seenTitles.add(title);
+      seenTitles.add(displayName);
+
+      const memMb = item.WorkingSetMb || 0;
+      const rawCpu = item.CpuSeconds || 0;
+      const prio = item.Priority || 8;
+      const simPriority = prio >= 13 ? 1 : prio <= 6 ? 3 : 2;
       const burstEst = Math.max(2, Math.min(10, (pid % 7) + 2));
 
-      let isUserApp = false;
-      let displayName = rawName;
-      let detail = "";
-      let category = "System / Background";
-
-      // 1. BRAVE BROWSER
-      if (lowerName === "brave.exe") {
-        if (!cmd.includes("--type=")) {
-          isUserApp = true;
-          displayName = "Brave Browser";
-          detail = browserTabs.length > 0
-            ? `Tabs: ${browserTabs.map(t => t.title).join(", ")}`
-            : "Active Web Browser Window";
-          category = "User Application";
-          simPriority = 1;
-        }
-      }
-      // 2. MICROSOFT POWERPOINT
-      else if (lowerName === "powerpnt.exe") {
-        isUserApp = true;
-        displayName = "Microsoft PowerPoint";
-        const fileMatch = cmd.match(/"([^"]+\.(?:pptx?|ppsx?))"/i) || cmd.match(/([^\s]+\.(?:pptx?|ppsx?))/i);
-        detail = fileMatch ? path.basename(fileMatch[1]) : "Presentation Slides";
-        category = "User Application";
-        simPriority = 1;
-      }
-      // 3. WHATSAPP
-      else if (lowerName.includes("whatsapp")) {
-        isUserApp = true;
-        displayName = "WhatsApp Desktop";
-        detail = "Instant Messaging Client";
-        category = "User Application";
-        simPriority = 2;
-      }
-      // 4. GOOGLE CHROME (detect if background daemon vs open window)
-      else if (lowerName === "chrome.exe") {
-        if (cmd.includes("--no-startup-window")) {
-          // Chrome background process lingering without an open window
-          isUserApp = false;
-          displayName = "Google Chrome (Background Daemon)";
-          detail = "Closed window (running in background)";
-          category = "Background Service";
-          simPriority = 3;
-        } else if (!cmd.includes("--type=")) {
-          isUserApp = true;
-          displayName = "Google Chrome";
-          detail = "Main Browser Window";
-          category = "User Application";
-          simPriority = 1;
-        } else {
-          isUserApp = false;
-          displayName = "Google Chrome (Worker)";
-          detail = "Background worker process";
-          category = "Background Service";
-          simPriority = 3;
-        }
-      }
-      // 5. CHATGPT DESKTOP
-      else if (lowerName.includes("chatgpt") && !cmd.includes("--type=")) {
-        isUserApp = true;
-        displayName = "ChatGPT Desktop";
-        detail = "AI Assistant Desktop App";
-        category = "User Application";
-      }
-      // 6. WPS OFFICE
-      else if (lowerName === "wps.exe") {
-        isUserApp = true;
-        displayName = "WPS Office";
-        detail = "Office Document Editor";
-        category = "User Application";
-      }
-      // 7. VS CODE & IDEs
-      else if (lowerName === "code.exe" && !cmd.includes("--type=")) {
-        isUserApp = true;
-        displayName = "Visual Studio Code";
-        detail = "Source Code Editor";
-        category = "User Application";
-      } else if (lowerName === "antigravity.exe" && !cmd.includes("--type=")) {
-        isUserApp = true;
-        displayName = "Antigravity IDE";
-        detail = "Active Workspace";
-        category = "User Application";
-      }
-
-      if (isUserApp && !seenPids.has(pid)) {
-        seenPids.add(pid);
-        userApps.push({
-          id: `PID-${pid}`,
-          realPid: pid,
-          name: displayName,
-          rawName,
-          windowTitle: detail,
-          detail,
-          category,
-          isUserApp: true,
-          memoryMb: memMb,
-          cpuSeconds: Math.round(memMb * 0.1),
-          priority: simPriority,
-          burstTime: burstEst,
-          arrivalTime: userApps.length % 4,
-          state: "RUNNING",
-        });
-      } else if (memMb > 35 && !seenPids.has(pid)) {
-        seenPids.add(pid);
-        backgroundProcesses.push({
-          id: `PID-${pid}`,
-          realPid: pid,
-          name: displayName,
-          rawName,
-          windowTitle: detail || "Background Task",
-          detail: detail || "Background Task",
-          category: category || "System Process",
-          isUserApp: false,
-          memoryMb: memMb,
-          cpuSeconds: Math.round(memMb * 0.05),
-          priority: simPriority,
-          burstTime: burstEst,
-          arrivalTime: (userApps.length + backgroundProcesses.length) % 4,
-          state: "RUNNING",
-        });
-      }
+      userApps.push({
+        id: `PID-${pid}`,
+        realPid: pid,
+        name: displayName,
+        rawName: `${item.ProcessName}.exe`,
+        windowTitle: detail,
+        detail,
+        category,
+        isUserApp: true,
+        memoryMb: memMb,
+        cpuSeconds: rawCpu,
+        priority: simPriority,
+        rawPriority: prio,
+        burstTime: burstEst,
+        arrivalTime: userApps.length % 4,
+        state: item.Responding ? "RUNNING" : "WAITING",
+      });
     }
 
-    // Also surface open tabs as distinct interactive items (e.g. YouTube Music, LeetCode, VTOP)
-    const tabItems = browserTabs.map((t, idx) => ({
-      id: `TAB-${8000 + idx}`,
-      realPid: 8000 + idx,
-      name: t.title,
-      rawName: "brave.exe (Tab)",
-      windowTitle: t.url,
-      detail: t.app,
-      category: "Browser Tab",
-      isUserApp: true,
-      memoryMb: 110 + (idx * 25),
-      cpuSeconds: 8 + (idx * 3),
-      priority: t.title.includes("YouTube") ? 1 : 2,
-      burstTime: 4 + (idx % 3),
-      arrivalTime: idx,
-      state: "RUNNING",
-    }));
+    // Background processes
+    const backgroundProcesses = [];
+    for (const bg of rawBgProcs) {
+      const pid = bg.Pid;
+      if (seenPids.has(pid)) continue;
+      seenPids.add(pid);
 
-    // Sort background processes by RAM descending
-    backgroundProcesses.sort((a, b) => b.memoryMb - a.memoryMb);
+      const rawProc = (bg.ProcessName || "").toLowerCase();
+      let displayName = `${bg.ProcessName}.exe`;
+      let category = "System / Background";
+      let detail = "Background OS Process";
 
-    // Combine: User apps & open tabs FIRST, followed by top background processes
-    const combined = [...userApps, ...tabItems, ...backgroundProcesses.slice(0, 35)];
+      if (rawProc === "chrome") {
+        displayName = "Google Chrome (Background Task)";
+        category = "Background Service";
+        detail = "No open window (--no-startup-window)";
+      } else if (rawProc === "wps") {
+        displayName = "WPS Office (Background Service)";
+        category = "Background Service";
+        detail = "Quickstart / Cloud Service (No Open Window)";
+      } else if (rawProc === "svchost") {
+        displayName = "Host Process for Windows Services";
+        category = "System Process";
+      } else if (rawProc === "dwm") {
+        displayName = "Desktop Window Manager";
+        category = "System Process";
+      }
+
+      const memMb = bg.WorkingSetMb || 0;
+      const prio = bg.Priority || 8;
+      const simPriority = prio >= 13 ? 1 : prio <= 6 ? 3 : 2;
+      const burstEst = Math.max(2, Math.min(10, (pid % 7) + 2));
+
+      backgroundProcesses.push({
+        id: `PID-${pid}`,
+        realPid: pid,
+        name: displayName,
+        rawName: `${bg.ProcessName}.exe`,
+        windowTitle: detail,
+        detail,
+        category,
+        isUserApp: false,
+        memoryMb: memMb,
+        cpuSeconds: bg.CpuSeconds || 0,
+        priority: simPriority,
+        rawPriority: prio,
+        burstTime: burstEst,
+        arrivalTime: (userApps.length + backgroundProcesses.length) % 4,
+        state: bg.Responding ? "RUNNING" : "WAITING",
+      });
+    }
+
+    // Combine: Live open apps FIRST, followed by top background processes
+    const combined = [...userApps, ...backgroundProcesses];
 
     cachedProcesses = combined;
     lastProcessFetchTime = now;
     return combined;
   } catch (err) {
-    console.warn("Could not query Windows processes via PowerShell CIM, using fallback:", err.message);
+    console.warn("Could not query Windows desktop windows, using fallback:", err.message);
     return getFallbackProcesses();
   }
 }
@@ -389,8 +309,8 @@ export async function getLiveProcesses() {
  */
 export async function getDiskInfo() {
   try {
-    const psCmd = `Get-PSDrive -PSProvider FileSystem | Select-Object Name, Used, Free | ConvertTo-Json -Compress`;
-    const { stdout } = await runPowershellEncoded(psCmd, 3000);
+    const psCmd = `powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem | Select-Object Name, Used, Free | ConvertTo-Json -Compress"`;
+    const { stdout } = await execAsync(psCmd, { timeout: 3000 });
     const parsed = JSON.parse(stdout);
     const list = Array.isArray(parsed) ? parsed : [parsed];
 
@@ -415,12 +335,12 @@ export async function getDiskInfo() {
 
 function getFallbackProcesses() {
   return [
-    { id: "PID-8096", realPid: 8096, name: "Brave Browser", rawName: "brave.exe", windowTitle: "YouTube Music, OS-TaskFlow, VTOP", detail: "Active Web Browser Window", category: "User Application", isUserApp: true, memoryMb: 254, cpuSeconds: 16, priority: 1, burstTime: 5, arrivalTime: 0, state: "RUNNING" },
-    { id: "TAB-8001", realPid: 8001, name: "YouTube Music", rawName: "brave.exe (Tab)", windowTitle: "https://music.youtube.com", detail: "YouTube Music (Web Player)", category: "Browser Tab", isUserApp: true, memoryMb: 140, cpuSeconds: 12, priority: 1, burstTime: 4, arrivalTime: 0, state: "RUNNING" },
-    { id: "PID-21196", realPid: 21196, name: "Microsoft PowerPoint", rawName: "POWERPNT.EXE", windowTitle: "Presentation Slides", detail: "Presentation Slides", category: "User Application", isUserApp: true, memoryMb: 174, cpuSeconds: 9, priority: 1, burstTime: 4, arrivalTime: 1, state: "RUNNING" },
-    { id: "PID-15076", realPid: 15076, name: "WhatsApp Desktop", rawName: "WhatsApp.Root.exe", windowTitle: "Instant Messaging Client", detail: "Instant Messaging Client", category: "User Application", isUserApp: true, memoryMb: 262, cpuSeconds: 10, priority: 2, burstTime: 3, arrivalTime: 2, state: "RUNNING" },
-    { id: "PID-23260", realPid: 23260, name: "ChatGPT Desktop", rawName: "ChatGPT Classic.exe", windowTitle: "AI Assistant Desktop App", detail: "AI Assistant Desktop App", category: "User Application", isUserApp: true, memoryMb: 160, cpuSeconds: 6, priority: 2, burstTime: 4, arrivalTime: 2, state: "RUNNING" },
-    { id: "PID-1048", realPid: 1048, name: "dwm.exe", rawName: "dwm.exe", windowTitle: "Desktop Window Manager", detail: "Desktop Window Manager", category: "System Process", isUserApp: false, memoryMb: 209, cpuSeconds: 8, priority: 2, burstTime: 4, arrivalTime: 3, state: "RUNNING" },
-    { id: "PID-1704", realPid: 1704, name: "svchost.exe", rawName: "svchost.exe", windowTitle: "Windows Host Process", detail: "Windows Host Process", category: "System Process", isUserApp: false, memoryMb: 45, cpuSeconds: 2, priority: 3, burstTime: 2, arrivalTime: 3, state: "RUNNING" },
+    { id: "PID-17244", realPid: 17244, name: "YouTube Music", rawName: "chrome.exe", windowTitle: "Ishq (From 'Lost;Found') | YouTube Music", detail: "Media / Audio Player", category: "Media / Audio Player", isUserApp: true, memoryMb: 226, cpuSeconds: 216, priority: 1, burstTime: 5, arrivalTime: 0, state: "RUNNING" },
+    { id: "PID-8096", realPid: 8096, name: "Brave Browser", rawName: "brave.exe", windowTitle: "OS-TaskFlow Simulator", detail: "Active Web Browser Window", category: "Web Browser", isUserApp: true, memoryMb: 239, cpuSeconds: 154, priority: 1, burstTime: 4, arrivalTime: 1, state: "RUNNING" },
+    { id: "PID-21196", realPid: 21196, name: "Microsoft PowerPoint", rawName: "POWERPNT.exe", windowTitle: "Campus_Communication_Network_Analyzer_Reordered (2).pptx", detail: "Presentation / Office", category: "Presentation / Office", isUserApp: true, memoryMb: 173, cpuSeconds: 34, priority: 1, burstTime: 4, arrivalTime: 2, state: "RUNNING" },
+    { id: "PID-15076", realPid: 15076, name: "WhatsApp Desktop", rawName: "WhatsApp.Root.exe", windowTitle: "Active WhatsApp Window", detail: "Messaging Client", category: "Messaging Client", isUserApp: true, memoryMb: 257, cpuSeconds: 179, priority: 2, burstTime: 3, arrivalTime: 3, state: "RUNNING" },
+    { id: "PID-23260", realPid: 23260, name: "ChatGPT Desktop", rawName: "ChatGPT Classic.exe", windowTitle: "Active ChatGPT Window", detail: "AI Assistant", category: "AI Assistant", isUserApp: true, memoryMb: 151, cpuSeconds: 151, priority: 2, burstTime: 4, arrivalTime: 0, state: "RUNNING" },
+    { id: "PID-1048", realPid: 1048, name: "Desktop Window Manager", rawName: "dwm.exe", windowTitle: "Desktop Window Manager", detail: "System Process", category: "System Process", isUserApp: false, memoryMb: 209, cpuSeconds: 8, priority: 2, burstTime: 4, arrivalTime: 1, state: "RUNNING" },
+    { id: "PID-1704", realPid: 1704, name: "Host Process for Windows Services", rawName: "svchost.exe", windowTitle: "Windows Host Process", detail: "System Process", category: "System Process", isUserApp: false, memoryMb: 45, cpuSeconds: 2, priority: 3, burstTime: 2, arrivalTime: 2, state: "RUNNING" },
   ];
 }

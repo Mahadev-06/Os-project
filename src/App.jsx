@@ -108,11 +108,11 @@ export default function App() {
       setLiveMetrics(lm.data);
     }, 2500);
 
-    // Process list poll (every 5s)
+    // Process list poll (every 2s for instant response when opening/closing apps)
     const procTimer = setInterval(async () => {
       const lp = await fetchLiveProcesses();
       setLiveProcesses(lp.data);
-    }, 5000);
+    }, 2000);
 
     return () => {
       clearInterval(metricsTimer);
