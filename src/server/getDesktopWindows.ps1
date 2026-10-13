@@ -12,8 +12,12 @@ public class WinEnumerator {
     [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+    [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
 
-    public class WinItem { public uint Pid; public string Title; }
+    public class WinItem {
+        public uint Pid;
+        public string Title;
+    }
 
     public static List<WinItem> GetWindows() {
         var list = new List<WinItem>();
@@ -22,18 +26,23 @@ public class WinEnumerator {
 
         EnumDesktopWindows(hDesktop, (hWnd, lParam) => {
             if (IsWindowVisible(hWnd)) {
-                var sb = new StringBuilder(512);
-                GetWindowText(hWnd, sb, 512);
-                string title = sb.ToString().Trim();
-                if (!string.IsNullOrEmpty(title) && 
-                    title != "Program Manager" && 
-                    title != "MSCTFIME UI" && 
-                    title != "Default IME" &&
-                    !title.StartsWith("Cua.") &&
-                    title != "Windows Input Experience") {
-                    uint pid;
-                    GetWindowThreadProcessId(hWnd, out pid);
-                    list.Add(new WinItem { Pid = pid, Title = title });
+                int cloaked = 0;
+                // Attribute 14 = DWMWA_CLOAKED. If cloaked != 0, window is hidden/suspended by shell
+                DwmGetWindowAttribute(hWnd, 14, out cloaked, sizeof(int));
+                if (cloaked == 0) {
+                    var sb = new StringBuilder(512);
+                    GetWindowText(hWnd, sb, 512);
+                    string title = sb.ToString().Trim();
+                    if (!string.IsNullOrEmpty(title) && 
+                        title != "Program Manager" && 
+                        title != "MSCTFIME UI" && 
+                        title != "Default IME" &&
+                        !title.StartsWith("Cua.") &&
+                        title != "Windows Input Experience") {
+                        uint pid;
+                        GetWindowThreadProcessId(hWnd, out pid);
+                        list.Add(new WinItem { Pid = pid, Title = title });
+                    }
                 }
             }
             return true;
@@ -63,9 +72,9 @@ foreach ($w in $wins) {
     }
 }
 
-$bgProcs = $allProcs | Where-Object { $winPids -notcontains $_.Id -and $_.WorkingSet64 -gt 35MB } | 
+# ALL background processes (no artificial truncation)
+$bgProcs = $allProcs | Where-Object { $winPids -notcontains $_.Id } | 
            Sort-Object WorkingSet64 -Descending | 
-           Select-Object -First 30 | 
            ForEach-Object {
                [PSCustomObject]@{
                    Pid = $_.Id
@@ -81,4 +90,5 @@ $bgProcs = $allProcs | Where-Object { $winPids -notcontains $_.Id -and $_.Workin
 @{
     OpenApps = $openApps
     Background = $bgProcs
+    TotalProcessCount = $allProcs.Count
 } | ConvertTo-Json -Depth 3 -Compress

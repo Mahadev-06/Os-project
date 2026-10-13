@@ -132,9 +132,11 @@ export async function getLiveProcesses() {
       const rawProc = (item.ProcessName || "").toLowerCase();
       const title = (item.Title || "").trim();
 
-      // Deduplicate helper sub-processes (e.g. msedgewebview2 inside WhatsApp)
-      if (rawProc === "msedgewebview2" && seenTitles.has("WhatsApp")) continue;
-      if (rawProc === "applicationframehost" && seenTitles.has("Settings")) continue;
+      // Skip background shell & internal UWP hosts (e.g. Settings, WebView2 helpers)
+      if (rawProc === "msedgewebview2") continue;
+      if (rawProc === "applicationframehost") continue;
+      if (rawProc === "systemsettings" || title === "Settings") continue;
+      if (title === "Windows Input Experience" || title.startsWith("Cua.")) continue;
       if (seenPids.has(pid)) continue;
 
       let displayName = item.ProcessName;

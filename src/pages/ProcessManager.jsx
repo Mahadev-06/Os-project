@@ -18,6 +18,8 @@ import {
   FileText,
   Monitor,
   Server,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 export default function ProcessManager({
@@ -39,6 +41,8 @@ export default function ProcessManager({
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [importedNotice, setImportedNotice] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const existingPids = processes.map((p) => p.id);
 
@@ -62,6 +66,13 @@ export default function ProcessManager({
     }
     return true;
   });
+
+  const totalLiveMatches = filteredLiveProcesses.length;
+  const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(totalLiveMatches / pageSize));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedLiveProcesses = pageSize === "all"
+    ? filteredLiveProcesses
+    : filteredLiveProcesses.slice((validCurrentPage - 1) * pageSize, validCurrentPage * pageSize);
 
   const handleImportSingle = (lp) => {
     const newProc = {
@@ -266,7 +277,10 @@ export default function ProcessManager({
               {/* Category Filter Toggle */}
               <div className="flex items-center bg-white p-0.5 rounded border border-slate-200 text-xs font-medium shadow-2xs">
                 <button
-                  onClick={() => setLiveFilter("user_apps")}
+                  onClick={() => {
+                    setLiveFilter("user_apps");
+                    setCurrentPage(1);
+                  }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-colors ${
                     liveFilter === "user_apps"
                       ? "bg-blue-600 text-white font-bold shadow-2xs"
@@ -277,7 +291,10 @@ export default function ProcessManager({
                   <span>Open User Apps Only ({userAppsCount})</span>
                 </button>
                 <button
-                  onClick={() => setLiveFilter("all")}
+                  onClick={() => {
+                    setLiveFilter("all");
+                    setCurrentPage(1);
+                  }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-colors ${
                     liveFilter === "all"
                       ? "bg-blue-600 text-white font-bold shadow-2xs"
@@ -295,7 +312,10 @@ export default function ProcessManager({
                   type="text"
                   placeholder="Search processes..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1);
+                  }}
                   className="pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded font-mono outline-none focus:border-blue-500 shadow-2xs"
                 />
               </div>
@@ -316,14 +336,14 @@ export default function ProcessManager({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono text-xs">
-                {filteredLiveProcesses.length === 0 ? (
+                {paginatedLiveProcesses.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-8 text-center text-xs text-slate-400 font-sans">
                       No matching live Windows tasks found for this filter.
                     </td>
                   </tr>
                 ) : (
-                  filteredLiveProcesses.map((lp) => {
+                  paginatedLiveProcesses.map((lp) => {
                     const isTab = lp.category === "Browser Tab" || lp.name?.includes("YouTube Music") || lp.name?.includes("LeetCode") || lp.name?.includes("VTOP");
                     const isPowerPoint = lp.rawName?.toLowerCase().includes("powerpnt") || lp.name?.includes("PowerPoint");
                     const isWhatsApp = lp.rawName?.toLowerCase().includes("whatsapp") || lp.name?.includes("WhatsApp");
@@ -363,7 +383,7 @@ export default function ProcessManager({
                               <div className="font-semibold text-slate-800 flex items-center gap-1.5">
                                 <span className="truncate">{lp.name}</span>
                                 {lp.rawName && lp.rawName !== lp.name && (
-                                  <span className="text-[10px] text-slate-400 font-mono shrink-0">({lp.rawName})</span>
+                                   <span className="text-[10px] text-slate-400 font-mono shrink-0">({lp.rawName})</span>
                                 )}
                               </div>
                               {(lp.windowTitle || lp.detail) && (
@@ -408,6 +428,72 @@ export default function ProcessManager({
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="p-3 border-t border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+            <div className="flex items-center gap-2">
+              <span>
+                Showing{" "}
+                <span className="font-semibold text-slate-900">
+                  {totalLiveMatches === 0
+                    ? 0
+                    : pageSize === "all"
+                    ? `1–${totalLiveMatches}`
+                    : `${(validCurrentPage - 1) * pageSize + 1}–${Math.min(
+                        validCurrentPage * pageSize,
+                        totalLiveMatches
+                      )}`}
+                </span>{" "}
+                of <span className="font-semibold text-slate-900">{totalLiveMatches}</span> tasks
+              </span>
+
+              <div className="hidden sm:flex items-center gap-1.5 ml-4 pl-4 border-l border-slate-300">
+                <span className="text-slate-500">Per page:</span>
+                {[25, 50, 100, "all"].map((size) => (
+                  <button
+                    key={size}
+                    onClick={() => {
+                      setPageSize(size);
+                      setCurrentPage(1);
+                    }}
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                      pageSize === size
+                        ? "bg-blue-600 text-white font-bold"
+                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {size === "all" ? "All" : size}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {pageSize !== "all" && totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={validCurrentPage <= 1}
+                  className="px-2 py-1 rounded bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-colors shadow-2xs font-medium"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Prev</span>
+                </button>
+
+                <span className="px-2 text-slate-500 font-mono text-[11px]">
+                  Page {validCurrentPage} of {totalPages}
+                </span>
+
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={validCurrentPage >= totalPages}
+                  className="px-2 py-1 rounded bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-colors shadow-2xs font-medium"
+                >
+                  <span>Next</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

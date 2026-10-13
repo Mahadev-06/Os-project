@@ -329,7 +329,7 @@ export default function Dashboard({
                       </td>
                     </tr>
                   ) : (
-                    displayedProcesses.slice(0, 14).map((p) => {
+                    (procFilter === "user_apps" ? displayedProcesses : displayedProcesses.slice(0, 20)).map((p) => {
                       const isTab = p.category === "Browser Tab" || p.name?.includes("YouTube Music") || p.name?.includes("LeetCode") || p.name?.includes("VTOP");
                       const isPowerPoint = p.rawName?.toLowerCase().includes("powerpnt") || p.name?.includes("PowerPoint");
                       const isWhatsApp = p.rawName?.toLowerCase().includes("whatsapp") || p.name?.includes("WhatsApp");
@@ -412,6 +412,20 @@ export default function Dashboard({
                 </tbody>
               </table>
             </div>
+
+            {procFilter === "all" && liveProcesses.length > 20 && (
+              <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 font-sans">
+                <span>
+                  Showing top 20 active tasks by memory out of <strong>{liveProcesses.length}</strong> total live Windows processes.
+                </span>
+                <button
+                  onClick={() => onNavigate && onNavigate("processes")}
+                  className="text-blue-700 hover:text-blue-800 font-bold hover:underline"
+                >
+                  View and search all in Process Manager →
+                </button>
+              </div>
+            )}
           </div>
         </>
       ) : (
