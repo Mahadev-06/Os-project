@@ -17,10 +17,23 @@ export default function Header({
         <div className="flex items-center gap-2.5">
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">{title}</h2>
           {mode === "live" ? (
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              Live PC
-            </span>
+            isHostConnected ? (
+              <span
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200"
+                title="Connected to Windows Host OS (Real-time hardware & process metrics)"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                Live PC
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-amber-50 text-amber-700 border border-amber-200"
+                title="Cloud Deployment: Web browsers prevent public websites from reading client desktop processes. Run locally with 'npm run dev' on Windows for Live Host OS mode."
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                Cloud Demo (Simulated)
+              </span>
+            )
           ) : (
             <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-slate-100 text-slate-600 border border-slate-200">
               Simulation Lab

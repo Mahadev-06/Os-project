@@ -50,6 +50,7 @@ export default function App() {
   const [liveProcesses, setLiveProcesses] = useState([]);
   const [disks, setDisks] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isHostConnected, setIsHostConnected] = useState(true);
 
   // Sync state to localStorage whenever processes change
   useEffect(() => {
@@ -87,11 +88,13 @@ export default function App() {
         fetchLiveProcesses(),
         fetchDisks(),
       ]);
+      setIsHostConnected(Boolean(ov?.isLive && lp?.isLive));
       setSystemOverview(ov.data);
       setLiveMetrics(lm.data);
       setLiveProcesses(lp.data);
       setDisks(dk.data);
     } catch (err) {
+      setIsHostConnected(false);
       console.warn("Failed fetching live system metrics:", err);
     } finally {
       setIsRefreshing(false);
@@ -352,6 +355,7 @@ export default function App() {
           subtitle={currentHeaderInfo.subtitle}
           mode={mode}
           setMode={setMode}
+          isHostConnected={isHostConnected}
           onRestoreDefaults={handleRestoreDefaults}
           onRefreshLive={refreshSystemData}
           isRefreshing={isRefreshing}

@@ -1,52 +1,126 @@
 # OS-TaskFlow
 
-## Interactive Process Scheduling and Resource Management Simulator
+## Interactive Process Scheduling, Resource Management & Live OS Explorer
 
-**OS-TaskFlow** is an interactive, browser-based operating systems simulation platform developed for college Operating Systems laboratories and coursework. It models core OS concepts including process management, the 5-state lifecycle, non-preemptive and preemptive CPU scheduling algorithms, multi-algorithm benchmarking, physical hardware resource contention, and deadlock avoidance via Dijkstra's Banker's Algorithm.
+**OS-TaskFlow** is an operating systems laboratory and analysis platform designed for university OS courses, viva demonstrations, and practical project evaluations.
 
----
-
-## 🛠️ Technology Stack
-
-- **React 18** (Modern functional components, hooks)
-- **Vite 6** (Fast, modern bundling with manual chunking)
-- **JavaScript (ES Modules)**
-- **Tailwind CSS** (Academic laboratory theme: slate sidebar, neutral borders, blue accents)
-- **Lucide React** (Crisp vector icons)
-- **Recharts** (Minimalist bar and area charts with zero neon/gradients)
-- **Browser localStorage** (Persistence across refreshes for workloads, resources, quantum, and Banker matrices)
+It provides a **dual-architecture system**:
+1. **🟢 Real PC Mode (Localhost)**: Hooks directly into the host Windows operating system via native Win32 APIs, Desktop Window Manager (`dwmapi.dll`), and process controllers. It monitors genuine hardware metrics (CPU load per core, RAM, disk partitions), actively opened user desktop applications (Brave Browser tabs, VS Code, WhatsApp, PowerPoint, YouTube Music), and all ~350+ live Windows processes.
+2. **☁️ Simulation Lab Mode (Cloud / Vercel)**: A portable, self-contained educational lab running non-preemptive and preemptive CPU scheduling algorithms (FCFS, SJF, Priority, Round Robin), dynamic Gantt charts, multi-algorithm benchmarking, and Dijkstra's Banker's Deadlock Algorithm in any web browser.
 
 ---
 
-## 🚀 Getting Started
+## ⚡ Real PC Mode vs. Vercel Cloud Deployment
+
+| Feature | Localhost (`npm run dev`) | Vercel Deployment (`https://...vercel.app`) |
+|:---|:---:|:---:|
+| **Operating Mode** | **Live Real PC Mode** 🟢 | **Simulation Lab Mode** ☁️ |
+| **Windows Win32 Process Bridge** | ✅ **Active** (Reads local Windows kernel) | ❌ *Blocked by web browser security sandbox* |
+| **Open User Apps & Browser Tabs** | ✅ **Real-Time** (Active visible windows) | 🔄 Simulated benchmark processes |
+| **All Windows Processes (~350+)** | ✅ **Authentic Live OS Processes** | 🔄 Synthetic academic workload |
+| **Live CPU & RAM Hardware Metrics** | ✅ **Direct Windows Host Telemetry** | 🔄 Simulated hardware telemetry |
+| **CPU Scheduling Algorithms** | ✅ Supported | ✅ Supported |
+| **Interactive Gantt Charts** | ✅ Supported | ✅ Supported |
+| **Banker's Algorithm & Deadlock** | ✅ Supported | ✅ Supported |
+| **Resource Manager & Device Pools**| ✅ Supported | ✅ Supported |
+
+> [!IMPORTANT]
+> **Why does Real PC Mode require running locally?**
+> Standard web browsers (Chrome, Brave, Edge) strictly forbid public cloud websites from querying a user's private computer hardware or inspect running desktop apps for security and privacy reasons. Running the project **locally** gives Node.js direct access to your Windows OS to bridge live telemetry safely to your dashboard.
+
+---
+
+## 💻 Step-by-Step Local Setup & Execution Guide
+
+Follow these steps on your Windows computer to run OS-TaskFlow with full **Real PC Mode**:
 
 ### Prerequisites
+* **Operating System**: Windows 10 or Windows 11 *(for native Win32 Desktop Window & Process APIs)*
+* **Node.js**: v18.0.0 or higher ([Download Node.js](https://nodejs.org/))
+* **npm**: v9.0.0 or higher (bundled with Node.js)
+* **Git**: ([Download Git](https://git-scm.com/))
 
-- **Node.js** (v18.0.0 or higher recommended)
-- **npm** (v9.0.0 or higher)
+---
 
-### Installation & Launch
+### 1. Clone the Repository
+Open your terminal (PowerShell, Command Prompt, or Git Bash) and run:
+```bash
+git clone https://github.com/Mahadev-06/Os-project.git
+cd Os-project
+```
 
-1. **Install Dependencies**:
+### 2. Install Dependencies
+Install all required Node.js packages:
+```bash
+npm install
+```
+
+### 3. Launch the Local Development Server & OS Bridge
+Start the Vite server and Windows telemetry bridge:
+```bash
+npm run dev
+```
+
+You should see output similar to:
+```text
+  VITE v6.4.3  ready in 1400 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+```
+
+### 4. Open the Web Application
+Open your web browser (Brave, Chrome, Edge, etc.) and go to:
+👉 **`http://localhost:5173`**
+
+### 5. What You Will See in Localhost:
+* **Real PC Indicator**: The header displays a green `Live PC` badge with a pulsing indicator.
+* **Open User Apps**: The Dashboard and Process Manager automatically display your actively open windows (e.g. Brave, VS Code, WhatsApp, YouTube Music) and updates every 2 seconds.
+* **All Windows Tasks**: View the true total count of all live Windows processes (~350+) with authentic PIDs, RAM usage, and thread priorities.
+* **Import to Scheduler**: Click **"+ Add to Scheduler"** on any real Windows process to bring live processes into the CPU scheduling algorithms!
+
+---
+
+## ☁️ Deploying to Vercel (For Online Simulation Demo)
+
+To host the interactive simulation lab online for your teacher and evaluators:
+
+1. Push your repository to GitHub:
    ```bash
-   npm install
+   git push origin main
    ```
+2. Log in to [Vercel](https://vercel.com/) and click **"Add New Project"**.
+3. Import your **`Os-project`** repository.
+4. Keep the default settings:
+   - **Framework Preset**: `Vite`
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+5. Click **"Deploy"**.
+6. Your site is now live! Anyone visiting the Vercel URL can test the algorithms, adjust quantum sizes, simulate process states, and run Banker's Deadlock checks.
 
-2. **Run Local Development Server**:
-   ```bash
-   npm run dev
-   ```
-   Open your browser and navigate to: **`http://localhost:5173`**
+---
 
-3. **Run Automated Algorithm Verification Tests**:
-   ```bash
-   npm test
-   ```
+## 🔧 Troubleshooting for Local Execution
 
-4. **Create Production Build**:
-   ```bash
-   npm run build
-   ```
+* **PowerShell Execution Policy Warning**:
+  If Windows blocks PowerShell scripts from running, run this in PowerShell:
+  ```powershell
+  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+  ```
+  *(This only applies to the current session and does not alter system-wide security settings).*
+
+* **Port 5173 Already in Use**:
+  If port 5173 is busy, run:
+  ```bash
+  npm run dev -- --port 3000
+  ```
+  Then visit `http://localhost:3000`.
+
+* **Automated Algorithm Verification Tests**:
+  To verify all scheduling edge cases and Banker's algorithm calculations:
+  ```bash
+  npm test
+  ```
 
 ---
 
