@@ -185,18 +185,30 @@ On initial startup, the simulator loads the standard college OS laboratory workl
 - **Release Resource**: Process relinquishes devices back to the pool; prevents over-releasing.
 - **Live Allocation Matrix**: Real-time matrix of devices held by each process.
 
-### 6. Deadlock & Safety Analyzer (Banker's Algorithm)
-- **Resource Types**: A, B, C
+### 6. Deadlock & Security Threat Guard (Anomaly Detection & Automated Remediation)
+- **Real-Time Threat Detection Engine**:
+  - **Priority Inversion Attack**: Detects when an unauthorized or least-priority background task (Priority 4/Idle) monopolizes critical resource locks, starving real-time high-priority tasks (Priority 1) and freezing the system.
+  - **Circular Wait Denial-of-Service (DoS)**: Detects circular hold-and-wait dependencies where available resources are depleted to `[0, 0, 0]`.
+  - **Live Host Process Security Audit**: Scans live Windows OS processes for suspicious background daemons running with idle base priorities while consuming abnormal CPU or RAM.
+- **Threat Level Banners**: Real-time status indicators (🟢 `SYSTEM SECURE`, 🟡 `ELEVATED RISK`, 🔴 `CRITICAL THREAT: DEADLOCK / ATTACK IN PROGRESS`).
+- **Recommended Kernel Remediation**: Specific action plans based on threat classification (Priority Ceiling Protocol, lock preemption, process isolation).
+- **⚡ "Auto-Remediate Threat & Fix Deadlock"**:
+  - Single-click automated kernel intervention:
+    1. Identifies rogue/deadlocking process.
+    2. Force-preempts held resource allocations and revokes exclusive locks.
+    3. Restores reclaimed units back to kernel Available vector.
+    4. Re-evaluates Dijkstra's Banker's Algorithm and displays verified Safe Sequence.
+    5. Restores system to SECURE & HEALTHY state with live execution audit logs.
+- **Interactive Scenarios**:
+  - `🟢 Standard Safe Case (5 Processes)`
+  - `⚠️ Rogue Attack: Priority Inversion`
+  - `🛑 DoS Attack: Circular Deadlock`
 - **Interactive Matrices**:
   - Available Vector $[A, B, C]$
-  - Allocation Matrix $[n \times 3]$
+  - Allocation Matrix with process Priority tiers $[n \times 3]$
   - Maximum Matrix $[n \times 3]$
   - Auto-calculated Need Matrix: $\text{Need}[i][j] = \text{Max}[i][j] - \text{Allocation}[i][j]$
-- **Safety Verification**:
-  - Identifies **SAFE STATE** with exact Safe Sequence banner (e.g., $P1 \rightarrow P3 \rightarrow P4 \rightarrow P0 \rightarrow P2$).
-  - Identifies **UNSAFE STATE** when deadlock risk exists.
-  - Full step-by-step trace showing Work vector progression and reclaimed resources.
-- **Quick Presets**: "Standard Safe Case (5 Processes)" and "Deadlock / Unsafe Case" for live demonstration.
+  - Step-by-step Work vector progression trace.
 
 ### 7. About Project
 - Problem statement, laboratory learning objectives, mapped operating system syllabus concepts, and clearly delineated future scope (Memory Management, Page Replacement, Disk Scheduling, Synchronization).

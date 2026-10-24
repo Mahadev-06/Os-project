@@ -17,7 +17,7 @@ export default function Sidebar({ activePage, setActivePage }) {
     { id: "scheduler", label: "CPU Scheduler", icon: Clock },
     { id: "comparison", label: "Algorithm Comparison", icon: BarChart3 },
     { id: "resources", label: "Resource Manager", icon: Server },
-    { id: "deadlock", label: "Deadlock Analyzer", icon: ShieldAlert },
+    { id: "deadlock", label: "Deadlock & Security Guard", icon: ShieldAlert },
     { id: "about", label: "About Project", icon: Info },
   ];
 

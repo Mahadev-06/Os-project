@@ -332,8 +332,8 @@ export default function App() {
       subtitle: "Physical computer hardware devices and simulated device allocation",
     },
     deadlock: {
-      title: "Deadlock & Safety Analyzer",
-      subtitle: "Banker's Safety Algorithm & sequence computation",
+      title: "Deadlock & Security Threat Guard",
+      subtitle: "Banker's Safety Algorithm, Priority Inversion Detection & Automated Remediation",
     },
     about: {
       title: "About OS-TaskFlow",
@@ -433,6 +433,10 @@ export default function App() {
             <DeadlockAnalyzer
               bankerData={bankerData}
               setBankerData={setBankerData}
+              liveProcesses={liveProcesses}
+              processes={processes}
+              mode={mode}
+              logEvent={logEvent}
             />
           )}
 
