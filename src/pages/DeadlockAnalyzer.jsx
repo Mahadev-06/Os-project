@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from "react";
 import BankerTable from "../components/BankerTable";
+import SecurityThreatModal from "../components/SecurityThreatModal";
 import { runBankerSafety, autoRemediateDeadlock } from "../algorithms/banker";
+import { MOCK_SECURITY_THREAT_PROFILES } from "../data/sampleBankerData";
 import {
   ShieldAlert,
   ShieldCheck,
   Cpu,
   Info,
   AlertTriangle,
+  AlertOctagon,
   Zap,
   Activity,
   Terminal,
@@ -29,6 +32,10 @@ export default function DeadlockAnalyzer({
   const [safetyResult, setSafetyResult] = useState(null);
   const [remediationLogs, setRemediationLogs] = useState(null);
   const [simulatedLiveThreat, setSimulatedLiveThreat] = useState(null);
+
+  // Mock Security Threat Popup State
+  const [selectedThreatIndex, setSelectedThreatIndex] = useState(0);
+  const [isThreatModalOpen, setIsThreatModalOpen] = useState(false);
 
   // Automatically run safety analysis on mount or data change
   useEffect(() => {
@@ -106,6 +113,19 @@ export default function DeadlockAnalyzer({
     }
   };
 
+  // Trigger Mock Security Threat with interactive Alert Popup
+  const handleTriggerMockThreat = (profileIndex = selectedThreatIndex) => {
+    const profile = MOCK_SECURITY_THREAT_PROFILES[profileIndex] || MOCK_SECURITY_THREAT_PROFILES[0];
+    setSelectedThreatIndex(profileIndex);
+    setBankerData(profile.data);
+    setRemediationLogs(null);
+    setIsThreatModalOpen(true);
+    setActiveSubTab("banker");
+    if (logEvent) {
+      logEvent(`🚨 MOCK SECURITY THREAT TRIGGERED: ${profile.name} (${profile.processId})`);
+    }
+  };
+
   // ==========================================
   // HOST PROCESS ANOMALY SCANNER LOGIC
   // ==========================================
@@ -166,7 +186,7 @@ export default function DeadlockAnalyzer({
 
   return (
     <div className="space-y-6">
-      {/* Top Header & Sub-Tab Navigation */}
+      {/* Top Header & Sub-Tab Navigation + Mock Threat Button */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
         <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-md border border-slate-200 text-xs font-medium">
           <button
@@ -193,11 +213,33 @@ export default function DeadlockAnalyzer({
           </button>
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-slate-500 font-sans">Detection Engine:</span>
-          <span className="font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-            Active • Invariant Guard
-          </span>
+        {/* Mock Security Threat Generator Controls */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-200">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+              Mock Threat:
+            </span>
+            <select
+              value={selectedThreatIndex}
+              onChange={(e) => setSelectedThreatIndex(Number(e.target.value))}
+              className="text-xs bg-white border border-slate-300 rounded px-2 py-1 font-medium text-slate-700 outline-none focus:border-rose-500 shadow-2xs cursor-pointer"
+            >
+              {MOCK_SECURITY_THREAT_PROFILES.map((p, idx) => (
+                <option key={p.id} value={idx}>
+                  {p.shortLabel || p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            onClick={() => handleTriggerMockThreat(selectedThreatIndex)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold shadow-2xs transition-all active:scale-95 animate-pulse"
+            title="Simulate this security threat attack and popup the intrusion alert dialog"
+          >
+            <AlertOctagon className="w-3.5 h-3.5" />
+            <span>🚨 Trigger Mock Threat</span>
+          </button>
         </div>
       </div>
 
@@ -218,6 +260,7 @@ export default function DeadlockAnalyzer({
             onAutoRemediate={handleAutoRemediate}
             remediationLogs={remediationLogs}
             onClearRemediationLogs={() => setRemediationLogs(null)}
+            onTriggerMockThreat={() => handleTriggerMockThreat(selectedThreatIndex)}
           />
 
           {/* Educational OS Concept Guide: Deadlock & Priority Inversion */}
@@ -475,6 +518,17 @@ export default function DeadlockAnalyzer({
           </div>
         </div>
       )}
+
+      {/* ======================================================== */}
+      {/* SECURITY THREAT POPUP MODAL */}
+      {/* ======================================================== */}
+      <SecurityThreatModal
+        isOpen={isThreatModalOpen}
+        threat={MOCK_SECURITY_THREAT_PROFILES[selectedThreatIndex]}
+        onClose={() => setIsThreatModalOpen(false)}
+        onAutoRemediate={handleAutoRemediate}
+        remediationLogs={remediationLogs}
+      />
     </div>
   );
 }

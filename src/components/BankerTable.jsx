@@ -8,6 +8,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   AlertTriangle,
+  AlertOctagon,
   Zap,
   RotateCcw,
   Cpu,
@@ -33,6 +34,7 @@ export default function BankerTable({
   onAutoRemediate,
   remediationLogs = null,
   onClearRemediationLogs,
+  onTriggerMockThreat,
 }) {
   const { resourceNames, available, processes } = bankerData;
   const threat = safetyResult?.threatAnalysis || {};
@@ -229,6 +231,16 @@ export default function BankerTable({
           >
             🛑 DoS Attack: Circular Deadlock
           </button>
+          {onTriggerMockThreat && (
+            <button
+              onClick={onTriggerMockThreat}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded border border-rose-300 transition-all shadow-2xs animate-pulse"
+              title="Simulate mock security intrusion attack with popup modal dialog"
+            >
+              <AlertOctagon className="w-3.5 h-3.5 text-rose-600" />
+              <span>🚨 Mock Threat Popup</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
